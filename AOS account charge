@@ -1,0 +1,84 @@
+# 푸쉬불렛 기반으로 만든 AOS 계좌자충
+# 디코에서 API 사서 쓰지 말고 차라리 이거 쓰셈 ㅋㅋㅋ;;
+import asyncio
+import json
+import websockets
+
+bankpin = ""
+
+async def push(callback):
+    global my_websocket
+    async for websocket in websockets.connect(
+            f'wss://stream.pushbullet.com/websocket/{bankpin}',
+            ping_interval=None,
+            ping_timeout=None):
+        try:
+            my_websocket = websocket
+            async for message in websocket:
+                result = await callback(message)
+                if result:
+                    return result
+        except websockets.ConnectionClosed:
+            my_websocket = None
+            continue
+
+async def 입금_메세지(message, expected_name, expected_amount):
+    try:
+        jsonObject = json.loads(message)
+        if jsonObject['type'] == 'push' and jsonObject['push']['type'] == 'mirror':
+            title = jsonObject['push'].get('title', '')
+            body = jsonObject['push'].get('body', '')
+
+            print("Debug: title =", title)
+            print("Debug: body =", body)
+
+            name = ""
+            amount_text = ""
+
+            # 여기에 님 은행별로 입금데이터 처 넣으시면 됩니당 전 그게 너무 귀찮아서~ 카뱅이랑 케이뱅크 수집은 필자는 했는데 그정도는 느그들도 할수있잖아 이 사이트에서 이 코드 보는거면 그정도는 하겠지지
+
+            amount = int(amount_text)
+    
+            if name == expected_name and amount == int(expected_amount):
+                return True  # 성공
+            else:
+                return False  # 실패
+        else:
+            return None
+    except Exception as e:
+        print({e})
+    return None
+
+async def countdown_timer(seconds):
+    await asyncio.sleep(seconds)
+
+async def main():
+    입금자명 = input("입금자명을 입력하세요: ")
+    금액 = int(input("입금 금액을 입력하세요: "))
+
+    print("5분 안에 입금을 완료해 주세요.")
+
+    try:
+        countdown_task = asyncio.create_task(countdown_timer(300)) # 몇분안에 입금해야 충전완료 되는 타이머 같은거임 원하면 늘리시면 됨됨
+        push_task = asyncio.create_task(push(lambda message: 입금_메세지(message, 입금자명, 금액)))
+
+        done, pending = await asyncio.wait([countdown_task, push_task], return_when=asyncio.FIRST_COMPLETED)
+
+        if push_task in done:
+            result = push_task.result()
+            if result is True:
+                print("충전 여부: 성공")
+            elif result is False:
+                print("충전 여부: 실패")
+            else:
+                print("5분내 입금알림 X")
+        else:
+            print("입금언제해 십련아아")
+        for task in pending:
+            task.cancel()
+
+    except asyncio.TimeoutError:
+        print("진심 입금 언제함?")
+
+if __name__ == "__main__":
+    asyncio.run(main())
